@@ -1,0 +1,213 @@
+---
+title: "Pre-processing of strains data"
+author: "Ceclia Trivellin"
+date: "`r Sys.Date()`"
+output: 
+  html_document:
+    df_print: kable
+    toc: true
+    toc_float: true
+---
+The following script is used to explore phenotypic data from different yeast strains cultivated in different conditions. 
+Each of the file loaded correspond to one strain grown in 29 conditions (in triplicates). Max. specific growth rate, lag phase, biomass and ethanol yield and cell dry weight are measured in all the conditions. Strains were re-inoculated in the same setup after 48h so a second maximum specific growth rate is also measured. 
+
+Load libraries 
+```{r, warnings=F, message=F}
+library(tidyverse)
+library(readr) 
+library(naniar)
+library(ggplot2)
+library(rstatix)
+library(ggridges)
+```
+
+Load data
+```{r, warnings=F}
+list_csv_files <- list.files(path = "~/processed_data/phenomics_strains/")
+df_strains <- readr::read_csv(list_csv_files) 
+
+```
+
+Investigating NAs and zeros
+```{r, warnings=F, message=F}
+df_strains$lag <- replace(df_strains$lag, df_strains$lag == 0, NA) #correcting 0 values in the lag with NA 
+vis_miss(df_strains)
+df_strains %>% head()
+```
+
+Add sample label and rename columns
+```{r, warnings=F, message=F}
+df_strains <- 
+  df_strains %>% 
+  mutate(Sample = paste(condition,well,strain,sep = "_")) %>% 
+  relocate(Sample, .before = well) %>% 
+  relocate(strain, .before = condition) %>% 
+  relocate(strain_type, .after = strain) %>% 
+  rename("umax" = "µmax") %>% 
+  select(-'r.c_µmax',-'µmax2',-'well')
+
+df_strains %>% head()
+```
+
+Convert measurements into long format
+```{r, warnings=F, message=F}
+df_strain_long <- 
+  df_strains %>% 
+  pivot_longer(cols = c(CDW,Yx,Yp,umax,lag),names_to = "phenotypes",values_to = "value")
+
+df_strain_long %>% head()
+```
+
+Plot phenotypes distributions
+```{r, warnings=F, message=F}
+df_strain_long %>% 
+  ggplot(aes(x = phenotypes, y = value, fill = phenotypes)) +
+  geom_violin(draw_quantiles = 0.5) +
+  scale_fill_manual(values = c("#fba465","#FC4E07","#3581d8","#00AFBB","#f2c85b")) +
+  facet_wrap(vars(phenotypes),scales = "free") +
+  theme_light()+
+  theme(
+    text = element_text(size = 20),
+    axis.text.x = element_text(size = 20, angle=90, vjust = 0.5,hjust = 1),
+    axis.title = element_text(size = 20, face = "bold"),
+    strip.background = element_rect(fill = "grey"),
+    strip.text.x = element_text(size = 20, color = "black", face = "bold"),
+    strip.text.y = element_text(size = 20, color = "black", face = "bold"))
+#ggsave("unfiltered_data_distributions.svg", width = 500, height = 300, unit = "mm", dpi = 300, path="~/plots")
+
+#load a supset to see if NA values have influenced the visualization of the distribution
+ggplot(
+  subset(df_strain_long, phenotypes != "lag"),
+  aes(x = phenotypes, y = value, fill = phenotypes)
+) +
+  geom_violin(draw_quantiles = 0.5) +
+  facet_wrap(vars(phenotypes), scales = "free") 
+```
+
+# Data preprocessing
+
+Filter unreasonable yields
+```{r, warnings=F, message=F}
+df_strain_long_tr <- df_strain_long %>% 
+  pivot_wider(names_from = phenotypes, values_from = value) %>% 
+  filter(Yx <= 0.61) %>% #theoretical maximum is 0.51 on glucose aerobic + 0.1
+  filter(Yp <= 0.61) %>% #theoretical maximum is 0.51 on glucose aerobic + 0.1
+  filter(CDW <= 39.65) %>% #assuming maximum Yx/s of 0.61 max biomass from 65 g/L glucose media is x = Yx/s(Si-S)=39.65 g/L 
+  pivot_longer(cols = c(CDW,Yx,Yp,umax,lag),names_to = "phenotypes",values_to = "value")
+df_strain_wide <- 
+  df_strain_long_tr %>% 
+  pivot_wider(names_from = phenotypes, values_from = value) 
+
+#extracting filtered rows 
+filtered <- anti_join(df_strains,df_strain_wide)
+```
+
+Plot phenotypes distributions after filtering data
+```{r,warnings=F, message=F}
+df_strain_long_tr %>% 
+  ggplot(aes(x = phenotypes, y = value, fill = phenotypes)) +
+  geom_violin(draw_quantiles = 0.5, na.rm = FALSE) +
+  scale_fill_manual(values = c("#fba465","#FC4E07","#3581d8","#00AFBB","#f2c85b")) +
+  facet_wrap(vars(phenotypes),scales = "free")+
+  theme_light()+
+  theme(
+    text = element_text(size = 20),
+    axis.text.x = element_text(size = 20, angle=90, vjust = 0.5,hjust = 1),
+    axis.title = element_text(size = 20, face = "bold"),
+    strip.background = element_rect(fill = "grey"),
+    strip.text.x = element_text(size = 20, color = "black", face = "bold"),
+    strip.text.y = element_text(size = 20, color = "black", face = "bold"))
+
+#ggsave("trimmed_data_distribution.svg", width = 500, height = 300, unit = "mm", dpi = 300, path="~/plots")
+
+```
+
+Exploring outliers with quantile method
+```{r}
+
+outlier_Yx <- which(df_strain_wide$Yx < quantile(df_strain_wide$Yx, 0.001) | df_strain_wide$Yx > quantile(df_strain_wide$Yx, 0.999))
+outlier_Yp <- which(df_strain_wide$Yp < quantile(df_strain_wide$Yp, 0.001, na.rm = TRUE) | df_strain_wide$Yp > quantile(df_strain_wide$Yp, 0.999, na.rm = TRUE))
+outlier_µmax <- which(df_strain_wide$µmax < quantile(df_strain_wide$µmax, 0.001) | df_strain_wide$µmax > quantile(df_strain_wide$µmax, 0.999))
+outlier_lag <- which(df_strain_wide$lag < quantile(df_strain_wide$lag, 0.001, na.rm = TRUE) | df_strain_wide$lag > quantile(df_strain_wide$lag, 0.999, na.rm = TRUE))
+outlier_CDW <- which(df_strain_wide$CDW < quantile(df_strain_wide$CDW, 0.001) | df_strain_wide$CDW > quantile(df_strain_wide$CDW, 0.999))
+
+highlight_Yx <- df_strain_wide[outlier_Yx, ] 
+highlight_Yp <- df_strain_wide[outlier_Yp, ] 
+highlight_µmax <- df_strain_wide[outlier_µmax, ] 
+highlight_lag <- df_strain_wide[outlier_lag, ] 
+highlight_CDW <- df_strain_wide[outlier_CDW, ] 
+
+# Plot outliers
+cols <- c("Yx"="#F2C85B","Yp"="#00AFBB","µmax"="#3581D8","CDW"="#fba465","lag phase"="#FC4E07")
+ggplot() +
+  geom_point(
+    data = highlight_Yx,
+    aes(x = condition, y = strain),
+    color = cols[1],
+    size = 10,
+    show.legend = TRUE
+  ) +
+  geom_point(
+    data = highlight_Yp,
+    aes(x = condition, y = strain),
+    color = cols[2],
+    size = 10
+  ) +
+  geom_point(
+    data = highlight_µmax,
+    aes(x = condition, y = strain),
+    color = cols[3],
+    size = 10
+  ) +
+  geom_point(
+    data = highlight_lag,
+    aes(x = condition, y = strain),
+    color = cols[4],
+    size = 10
+  ) +
+  geom_point(
+    data = highlight_CDW,
+    aes(x = condition, y = strain),
+    color = cols[5],
+    size = 10
+  ) +
+  theme(
+    text = element_text(size = 20),
+    axis.title = element_text(size = 20, face = "bold"),
+    axis.text.x = element_text(
+      angle = 90,
+      vjust = 0.5,
+      hjust = 1
+    )
+  )+
+  scale_color_manual(name="Variable",values=cols) 
+#ggsave("S1_outliers.svg", width = 500, height = 300, unit = "mm", dpi = 300, path="~/plots")
+
+```
+
+Save processed data
+```{r, warnings=F, message=F}
+saveRDS(df_strain_long,file = "df_strain_long.rds")
+saveRDS(df_strain_long_tr,file = "df_strain_long_tr.rds")
+```
+
+Check if distribution of the variables (phenotypes) in normal 
+
+```{r, warnings=F, message=F}
+df_strain_wide %>% shapiro_test(umax, lag, CDW, Yx, Yp)
+```
+
+Visualizing distribution for each strain 
+Change x in the aesthetic to visualize phenotype of interest
+
+```{r}
+ggplot(df_strain_wide, aes(x = CDW, y = strain)) +
+  # xlim(-0.03, 0.22)+
+  geom_density_ridges(aes(fill = strain_type), jittered_points = TRUE, position = position_points_jitter(height = 0),
+                      point_shape = '|', point_size = 3, 
+                      point_alpha = 1, alpha = 0.7) +
+  scale_fill_manual(values = c("#00AFBB", "#E7B800", "#FC4E07")) 
+#ggsave("CDW_distributions.svg", width = 500, height = 300, unit = "mm", dpi = 300, path="~/plots")
+
+```
+
