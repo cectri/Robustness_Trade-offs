@@ -1,0 +1,352 @@
+---
+title: "strain_phenotype_calc"
+author: "Cecilia Trivellin"
+date: "`r Sys.Date()`"
+output: html_document
+---
+Chalmers University of Technology
+Gothenburg, Sweden
+2023
+
+This script is used to calculate phenotypic variables from growth curves and sugar/ethanol concentrations in high throughput screenings
+In the first part the growth variables (maximum specific growth rate, lag phase) are calculated from an excel file exported from the growth profiler in GV units
+Each plate analyzed correspond to a specific strain. In the plate various growth conditions are present (plate_layout).
+
+#Loading libraries
+
+```{r}
+library(tidyverse)
+library(lattice)
+library(deSolve)
+library(growthrates)
+library(ggplot2)
+library(ggExtra)
+library(naniar)
+library(ggpubr)
+library(statmod)
+```
+
+#Loading data
+```{r}
+#summary contains information about how the growth_profiler plate is structured
+summary <- readxl::read_excel("~/raw_data/plate_legend.xlsx")
+#data contains the green values "GV" measured in the growth profiler. Each column corresponds to a well, except the 1st column which is the time in minutes.
+#the time column is converted in hours, the last 9 column are removed because they are empty and the plate is reorganized to have only 3 columns (well, values, time(h))
+data <- readxl::read_excel("~/raw_data/strain-name.xlsx", sheet = "GV") %>%
+  mutate(timeh = `time`/60) %>%
+  select(-`time`, -`H4`, -`H5`,-`H6`,-`H7`, -`H8`, -`H9`,-`H10`,-`H11`, -`H12`) %>%
+  gather("well", "value", -timeh) 
+#the summary of plate and the log of the growth values are merged in the same table, the mean and the standard deviation of the replicates are calculated
+strain <- inner_join(data, summary, by="well") %>%
+  group_by(condition, timeh) %>%
+  mutate(log_value=log(value)) %>%
+  mutate(mean=mean(log_value)) %>%
+  mutate(stdev=sd(log_value)) %>%
+  filter(replicate == 1) 
+```
+
+#Statistical test
+growth curves from different media are compared with the function "CompareGrowthCurves"
+```{r}
+stats <- compareGrowthCurves(strain$condition,as.matrix(strain$mean)) %>%
+  filter(Group2 == "Glu_20" | Group1 =="Glu_20")
+#swapping columns because the output of comparegrowthcurves does not give the right output to plot the data
+tmp <- stats[1:12,1]
+stats[1:12,1] <- stats[1:12,2]
+stats[1:12,2] <- tmp
+#plotting P-values
+ggboxplot(stats, x = "Group1", y = "P.Value", colour= "Group2", palette = "jco",
+          add = "jitter")
+#extracting conditions that are significantly different from Glu_20
+stats_results <- stats %>%
+  filter(P.Value <= 0.05)
+print(stats_results$Group2)
+```
+
+#Plotting growth curves 
+Three plotting options are available to visualize 1)standard deviation among triplicates; 2)all the replicates independently; 3) groups of conditions plotted together
+
+```{r}
+#create a table with all replicates to plot in log scale 
+strain_replicates <- right_join(data, summary, by="well") %>%
+  mutate(replicate= as.character(replicate)) %>%
+  mutate(log_value=log(value))
+
+#plot the data visualizing the standard deviation 
+palette <- c("#66c2a5", "#fc8d62", "#8da0cb", "#fb8072", "#a6d854", "#ffd92f")
+
+ggplot(data = strain) +
+  geom_ribbon(aes(x= timeh, ymin = log_value-stdev, ymax = log_value+stdev, fill= group), alpha= 0.5)+
+  geom_line(aes(y=log_value, x=timeh, colour=group)) +
+  scale_fill_manual(values = palette) +
+  scale_colour_manual(values = palette) +
+  labs(title = "LBCM1106",
+       subtitle = "growth curves",
+       y = "log_GV", x = "time(h)") + 
+  facet_wrap(~condition)  +
+  theme(legend.title = element_blank(), 
+              text = element_text(size = 20),
+              panel.background = element_blank(),
+              panel.grid.major = element_line(size = 0.5, linetype = 'solid',
+                                              colour = "grey"), 
+              panel.grid.minor = element_line(size = 0.25, linetype = 'solid',
+                                              colour = "grey"))
+
+#ggsave("growth_curves_strain-name.png", width = 10, height = 10, path = "~/plots")
+#plot growth curves to visualize replicates
+ggplot() +
+  geom_point(data = strain_replicates, size = 0.5, aes(y=log_value, x=timeh, colour=group, shape=replicate)) +
+  scale_colour_manual(values = palette) +
+  labs(title = "LBCM1106",
+       subtitle = "growth curves + replicates",
+       y = "log_GV", x = "time(h)") + 
+  facet_wrap(~condition)  +
+  theme(legend.title = element_blank(), 
+        text = element_text(size = 20),
+        panel.background = element_blank(),
+        panel.grid.major = element_line(size = 0.5, linetype = 'solid',
+                                        colour = "grey"), 
+        panel.grid.minor = element_line(size = 0.25, linetype = 'solid',
+                                        colour = "grey"))
+
+#ggsave("growth_curves_replicates_strain-name.png", width = 10, height = 10, path = "~/plots")
+#plotting to visualize the groups 
+library(RColorBrewer)
+nb.cols <- 29
+mycolors <- colorRampPalette(brewer.pal(12, "Paired"))(nb.cols)
+
+ggplot(data = strain) +
+    geom_ribbon(aes(x= timeh, ymin = mean-stdev, ymax = mean+stdev, fill= condition), alpha= 0.5)+
+    geom_line(aes(y=mean, x=timeh, colour=condition)) +
+    scale_fill_manual(values = mycolors) +
+    scale_colour_manual(values = mycolors)+
+    labs(title = "LBCM1106",
+         subtitle = "growth curves",
+         y = "logGV", x = "time(h)") +
+      facet_wrap(~group)  +
+  theme(legend.title = element_blank(), 
+        text = element_text(size = 20),
+        panel.background = element_blank(),
+        panel.grid.major = element_line(size = 0.5, linetype = 'solid',
+                                        colour = "grey"), 
+        panel.grid.minor = element_line(size = 0.25, linetype = 'solid',
+                                        colour = "grey"))
+
+#ggsave("growth_curves_groups_strain-name.png", width = 10, height = 10, path = "~/plots")
+```
+
+#Calculation of maximum specific growth rate and lag phase 
+
+```{r}
+#the function all_splines is used to calculate the µmax 
+many_spline_fits <- all_splines(value ~ timeh | group + condition + replicate,
+                                data = strain_replicates, spar = 0.7)
+par(mfrow = c(6,6))
+par(mar=c(1,1,1,1))
+plot(many_spline_fits)
+#data frame is created with the results coming from all_splines function
+results <- results(many_spline_fits)
+
+#calculate lambda (lag phase): the coordinates of the inflection point have been extracted and used to calculate the tangent and subsequently the x value correspondent to the lag phase
+i=0
+inf_points <- NULL
+for (i in 1:87){
+  tmp <- many_spline_fits@fits[[i]]@xy 
+  inf_points <- rbind(inf_points, tmp)
+}
+inf_points <- as.data.frame(inf_points)
+lambda_mu <- bind_cols(results, inf_points) %>% 
+  dplyr::rename(x = V1, y = V2, µmax=mumax) %>%
+  dplyr::mutate(lag=((log10(y0)-log10(y))/µmax)+x) %>%
+  dplyr::mutate(replicate= as.character(replicate))
+
+#all_splines function will approximate each curve. In the wells with no growth the values reported 
+#are wrongly estimated but R2 values are low therefore can be excluded 
+lambda_mu$µmax[lambda_mu$r2< 0.985] <- 0
+lambda_mu$lag[lambda_mu$r2<0.985] <-0
+lambda_mu <- lambda_mu %>%
+  select(-`y0`, -`x`, -`y`)
+
+#saving the dataset for further analysis
+# write_csv(lambda_mu, path = "~/processed_data/strain-name_growth.csv")
+```
+
+#Calculation of yields and cell dry weight
+
+The following part of the script is meant to calculate biomass_yield, ethanol yield and CDW from an excel file containing the summary from OD measurements and enzymatic essays
+
+load data
+```{r}
+strain_summary <- readxl::read_excel("~/raw_data/strain_summary.xlsx")
+summary_dilutions <- readxl::read_excel("~/plate_layout/summary_dilutions.xlsx")
+sugar_initial_concentration <- readxl::read_excel("~/plate_layout/sugar_initial_concentration.xlsx")
+```
+calculation of maximum specific grwoth rate
+```{r}
+#calculate CDW with calibration curves previously made
+CDW <- select(strain_summary, well, condition, replicate, group, final_OD, CDW_OD) %>%
+  mutate(CDW=final_OD*CDW_OD[1]) %>%
+  slice(1:87)
+#final Cell dry weight in g/L with the slope value from the calibration curve
+```
+glucose concentrations 
+```{r}
+#calculate glucose concentrations, postion 89 is the standard for the sugar essays
+Glu_conc <- select(strain_summary, well, condition, replicate, group, A1_glu, A0_glu)%>%
+  inner_join(summary_dilutions, by = c("well", "condition", "replicate", "group")) %>%
+  select(-`man`, -`gal`, -`xyl`, -`ara`) %>%
+  mutate(final_glu_conc=((A1_glu-A0_glu)/(A1_glu[89]-A0_glu[89]))*glu*0.4) %>%
+  slice(1:87) #to remove the blank and the standards 
+```
+other sugars concentrations
+```{r}
+#calculte other sugars concentrations 
+Man_conc <- select(strain_summary, well, condition, replicate, group, A1_man, A0_man)%>%
+  inner_join(summary_dilutions, by = c("well", "condition", "replicate", "group")) %>%
+  select(-`glu`, -`gal`, -`xyl`, -`ara`) %>%
+  mutate(final_man_conc=((A1_man-A0_man)/(A1_man[32]-A0_man[32]))*man*0.1) %>%
+  slice(25:30) 
+Xyl_conc <- select(strain_summary, well, condition, replicate, group, A1_xyl, A0_xyl)%>%
+  inner_join(summary_dilutions, by = c("well", "condition", "replicate", "group")) %>%
+  select(-`glu`, -`gal`, -`man`, -`ara`) %>%
+  mutate(final_xyl_conc=((A1_xyl-A0_xyl)/(A1_xyl[14]-A0_xyl[14]))*xyl*0.25) %>%
+  slice(7:12)
+Gal_conc <- select(strain_summary, well, condition, replicate, group, A1_gal, A0_gal)%>%
+  inner_join(summary_dilutions, by = c("well", "condition", "replicate", "group")) %>%
+  select(-`glu`, -`man`, -`xyl`, -`ara`) %>%
+  mutate(final_gal_conc=((A1_gal-A0_gal)/(A1_gal[20]-A0_gal[20]))*gal*0.4) %>%
+  slice(13:18)
+Ara_conc <- select(strain_summary, well, condition, replicate, group, A1_ara, A0_ara)%>%
+  inner_join(summary_dilutions, by = c("well", "condition", "replicate", "group")) %>%
+  select(-`glu`, -`gal`, -`xyl`, -`man`) %>%
+  mutate(final_ara_conc=((A1_ara-A0_ara)/(A1_ara[26]-A0_ara[26]))*ara*0.4) %>%
+  slice(19:24)
+```
+calculate biomass and ethanol yield: g-biomass formed or g-ethanol formed / g-substrate consumed 
+```{r}
+#create a dataset by marging the different tables calculated before
+yields <- select(strain_summary, well, condition, replicate, group, etoh_conc) %>%
+  right_join(CDW, by=c("well", "condition", "replicate", "group")) %>%
+  select(-`final_OD`, -`CDW_OD`) %>%
+  right_join(Glu_conc, by = c("well", "condition", "replicate", "group")) %>%
+  select(-`A1_glu`, -`A0_glu`, -`glu`)%>%
+  left_join(Man_conc, by = c("well", "condition", "replicate", "group")) %>%
+  select(-`A1_man`, -`A0_man`, -`man`) %>%
+  left_join(Xyl_conc, by = c("well", "condition", "replicate", "group")) %>%
+  select(-`A1_xyl`, -`A0_xyl`, -`xyl`) %>%
+  left_join(Gal_conc, by = c("well", "condition", "replicate", "group")) %>%
+  select(-`A1_gal`, -`A0_gal`, -`gal`) %>%
+  left_join(Ara_conc, by = c("well", "condition", "replicate", "group")) %>%
+  select(-`A1_ara`, -`A0_ara`, -`ara`) %>%
+  replace_with_na_all(condition = ~.x <= 0) %>% #replacing negative value with 0 (in the test it means there is no more sugar to measure)
+  replace_na(list(final_glu_conc=0, final_man_conc = 0, final_xyl_conc = 0, final_gal_conc = 0, final_ara_conc = 0 )) %>% #replacing NA values with 0 otherwise it cannot calculate the sum
+  left_join(sugar_initial_concentration, by=c("well", "condition", "replicate", "group")) %>%
+  mutate(final_sugars_conc=final_man_conc+final_xyl_conc+final_gal_conc+final_ara_conc) %>%
+  select(-`final_man_conc`,-`final_gal_conc`,-`final_xyl_conc`,-`final_ara_conc`) %>%
+  mutate(consumed_glucose=glu_conc-final_glu_conc) %>%
+  select(-`glu_conc`,-`final_glu_conc`) %>%
+  mutate(consumed_sugarx=other_sugar_conc-final_sugars_conc) %>%
+  select(-`other_sugar_conc`,-`final_sugars_conc`) %>%  #calculating how much sugar has been consumed
+  replace_with_na_all(condition = ~.x <= 0)%>%  #replacing negative values with 0 
+  replace_na(list(consumed_glucose=0, consumed_sugarx = 0, etoh_conc=0)) %>%
+  mutate(Yx=CDW/(consumed_glucose+consumed_sugarx)) %>% 
+  mutate(Yp=etoh_conc/(consumed_glucose+consumed_sugarx)) %>%
+  select(-`etoh_conc`, -`consumed_glucose`,-`consumed_sugarx`)
+```
+
+Trimming dataset
+```{r}
+yields$Yx[yields$Yx == Inf] <-0
+yields$Yp[yields$Yp == Inf] <-0
+yields$Yp[yields$condition == "EtOH_45"] <-0
+yields$Yp[yields$condition == "EtOH_90"] <-0
+```
+
+The following part of the script analyses the second cultivation maximum specific growth rate and creates a unique dataset with all the calculated phenotypes. 
+```{r}
+#analysing the growth of the second growth as above 
+data2 <- readxl::read_excel("~/raw_data/strain_2nd growth.xlsx", sheet = "GV") %>%
+  mutate(timeh = `time`/60) %>%
+  select(-`time`, -`H4`, -`H5`,-`H6`,-`H7`, -`H8`, -`H9`,-`H10`,-`H11`, -`H12`) %>%
+  gather("well", "value", -timeh) 
+
+```
+
+merging the growth gata with the metadata
+```{r}
+#the summary of plate and the growth values are merged in the same table, the mean and the standard deviation of the replicates are calculated
+strain2 <- right_join(data2, summary, by="well") %>%
+  group_by(condition, timeh) %>%
+  mutate(log_value=log(value)) %>%
+  mutate(mean=mean(log_value)) %>%
+  mutate(stdev=sd(log_value)) 
+```
+Plotting the 2nd cultivation growth curves 
+```{r}
+#create a table with all replicates to plot in log scale 
+strain_replicates2 <- right_join(data2, summary, by="well") %>%
+  mutate(replicate= as.character(replicate)) %>%
+  mutate(log_value=log(value))
+
+#plot the data visualizing the standard deviation 
+ggplot() +
+  geom_point(data = strain_replicates2, size = 0.5, aes(y=log_value, x=timeh, colour=group, shape=replicate)) +
+  scale_colour_manual(values = palette) +
+  labs(title = "LBCM1106",
+       subtitle = "growth curves + replicates",
+       y = "log_GV", x = "time(h)") + 
+  facet_wrap(~condition)  +
+  theme(legend.title = element_blank(), 
+        text = element_text(size = 20),
+        panel.background = element_blank(),
+        panel.grid.major = element_line(size = 0.5, linetype = 'solid',
+                                        colour = "grey"), 
+        panel.grid.minor = element_line(size = 0.25, linetype = 'solid',
+                                        colour = "grey"))
+#ggsave("strain_2nd_growth.png", width = 10, height = 10, path = "~/plots")
+
+```
+
+Calculate umax and lag phase in teh second cultivation 
+```{r}
+#fit the curves and calculate µmax, through the graphs it is possible to visualize the inflection point and the smoothing splines
+many_spline_fits_2 <- all_splines(value ~ timeh | group + condition + replicate,
+                                  data = strain_replicates2, spar = 0.5)
+par(mfrow = c(6,6))
+par(mar=c(1,1,1,1))
+plot(many_spline_fits_2)
+lambda_mu_2 <- results(many_spline_fits_2)%>%
+  rename(µmax=mumax)
+
+#all_splines function will approximate each curve. In the wells with no growth the values reported 
+#are therefore wrong but R2 values are very low therefore can be excluded 
+lambda_mu_2$µmax[lambda_mu_2$r2< 0.985] <- 0
+lambda_mu_2$replicate <- as.character(lambda_mu_2$replicate)
+```
+
+Merging first growth, yields and second growth
+```{r}
+growth1 <- lambda_mu
+growth2 <- lambda_mu_2 %>%
+  rename(µmax2 = µmax) %>%
+  inner_join(growth1, by=c("group", "condition", "replicate")) %>%
+    select(-`y0`,-`r2.x`,-`r2.y`)
+#putting together the growth variables and the production variables
+yields$replicate <- as.character(yields$replicate)
+
+strain_data_exp <- yields %>%
+  inner_join(growth2, by=c("condition", "replicate","group")) %>%
+  # select(-`well`, -`r2`) %>%
+  mutate(strain = "strain_name") %>%
+  mutate(strain_type ="strain_type") 
+
+#correcting phenotypes when growth is 0
+strain_data_exp$CDW[strain_data_exp$µmax == 0] <-0
+strain_data_exp$Yx[strain_data_exp$µmax == 0] <-0
+strain_data_exp$Yp[strain_data_exp$µmax == 0] <-0
+#saving phenotypes for each strain
+#write_csv(LBCM1106_data_exp, path = "~/processed_data/strain-name_phenotype.csv")
+
+```
+
+
