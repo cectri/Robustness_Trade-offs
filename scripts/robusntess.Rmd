@@ -1,0 +1,245 @@
+---
+title: "robustness_ analysis"
+author: "Cecilia Trivellin"
+date: "`r Sys.Date()`"
+output: 
+  html_document:
+    df_print: kable
+    toc: true
+    toc_float: true
+---
+The following script was used to calculate the robustness of five phenotypes (max. specific growth rate, lag phase, biomass and ethanol yield and cell dry weight) of 24 Saccharomyces cerevisiae strains. Correlations between performance and robustness were also performed with Spearman's correlation tests. 
+
+Load libraries
+```{r, warning=F, message=FALSE}
+library(tidyverse)
+library(ggplot2)
+library(ggpubr)
+library(ggsci)
+library(RColorBrewer) 
+library(ggridges)
+library(stats)
+library(gghighlight)
+library(ggbeeswarm)
+library(uwot)
+library(GGally)
+```
+Load data
+```{r}
+df_strain_long <- readRDS("~/data/data.rds")
+df_strain <-  df_strain_long %>% pivot_wider(names_from = phenotypes,values_from = value)
+```
+
+# Microbial Robustness
+Calculating the mean and the standard deviation for each variable, strain and replicate 
+```{r}
+df_mean <- df_strain %>%
+  gather(key="phenotypes", value="value", c("umax", "lag", "Yx", "Yp", "CDW")) %>%
+  group_by(strain, phenotypes, replicate) %>%
+  mutate(mean=mean(value,  na.rm=TRUE)) %>%
+  mutate(stdev=sd(value,  na.rm=TRUE)) %>%
+  filter(condition == "Glu_20" ) %>%
+  select(-c(condition, group, value))
+```
+Calculating the Fano factor and the normalized robustness
+```{r}
+df_R <- df_mean %>%
+  group_by(phenotypes)%>%
+  mutate(mean_v=mean(mean, na.rm=TRUE)) %>%
+  mutate(robustness=-stdev^2/mean, na.rm=TRUE)%>%
+  mutate(robustness_n=robustness/mean_v, na.rm=TRUE) %>%
+  ungroup()%>%
+  group_by(strain, phenotypes) %>%
+  mutate(mean_R=mean(robustness_n, na.rm=TRUE)) %>%
+  mutate(sem_R=sd(robustness_n)/sqrt(3),na.rm=TRUE) 
+```
+Plotting robusntess
+```{r}
+df_R <- df_R %>%
+  filter(replicate==1) 
+
+mean_for_R_ggplot <- df_R %>%
+  group_by(phenotypes) %>%
+  summarize(mean_R = mean(mean_R))
+
+df_R %>%
+  mutate(strain = factor(
+    strain,
+    levels = c(
+      "ETRED",
+      "PE2",
+      "Redstar",
+      "Thermosacc",
+      "CENPK7D",
+      "S288C",
+      "LBCM1001",
+      "LBCM1003",
+      "LBCM1008",
+      "LBCM1013",
+      "LBCM1014",
+      "LBCM1017",
+      "LBCM103",
+      "LBCM1030",
+      "LBCM1046",
+      "LBCM1079",
+      " LBCM109",
+      "LBCM1095",
+      "LBCM1099",
+      "LBCM110",
+      "LBCM1106",
+      "LBCM37",
+      "LBCM67",
+      "LBCM97",
+      ordered = T
+    )
+  )) %>%
+ggplot() +
+  geom_bar(aes(x=strain, y=mean_R, fill=strain_type), stat="identity") +
+  geom_errorbar(aes(x=strain, ymin=mean_R-sem_R, ymax=mean_R+sem_R), width=0.05, colour="red", alpha=0.9, size=0.5)+
+    geom_hline(data = mean_for_R_ggplot, aes(yintercept = mean_R), color = "black") +  # Add this line
+  facet_grid(rows = vars(phenotypes), scales = "free_y") +
+  scale_fill_manual(values = c('#bdbdbd', '#636363', '#303030')) +
+  theme_light()+
+  theme(
+    text = element_text(size = 10),
+    axis.text.x = element_text(size = 10, angle=90, vjust = 0.5,hjust = 1),
+    axis.title = element_text(size = 10, face = "bold"),
+    strip.background = element_rect(fill = "grey"),
+    strip.text.x = element_text(size = 10, color = "black", face = "bold"),
+    strip.text.y = element_text(size = 10, color = "black", face = "bold"))
+
+#ggsave("Robustenss.svg", width = 300, height = 200, unit = "mm", dpi = 300, path="~/plots")
+```
+Calculating mean of performance and mean of robustness
+```{r}
+phenotype_mean <- df_R[c("strain","strain_type","phenotypes", "mean")] %>%
+  tidyr::spread(phenotypes,mean) %>%
+  mutate(mean= (umax+lag+Yp+Yx+CDW)/5)
+phenotype_long <- phenotype_mean %>%
+  gather(key="phenotypes", value="value", c("umax", "lag", "Yx", "Yp", "CDW"))
+robustness_mean <- df_R[c("strain","strain_type","phenotypes", "mean_R")] %>%
+  pivot_wider(names_from =phenotypes, values_from=mean_R) %>%
+  mutate(mean= (umax+lag+Yp+Yx+CDW)/5)
+rob_long <- robustness_mean %>%
+  gather(key="phenotypes", value="value", c("umax", "lag", "Yx", "Yp", "CDW"))
+
+#heatmaps after normalization 
+scale <- function(x) (x-min(x))/(max(x) - min(x)) * 100 #normalizing between 0 and 100 
+
+pm2 <- phenotype_mean[,1:7]
+pm2[, 3:7] <- as_data_frame(lapply(pm2[, c(3:7)], scale)) 
+phenotype_mean_long <- pm2 %>%
+  gather(key="phenotypes", value="value", c("umax", "lag", "Yx", "Yp", "CDW"))
+
+rm2 <- robustness_mean[,1:7]
+rm2[, 3:7] <- lapply(rm2[, c(3:7)], scale)
+robustness_mean_long <- rm2 %>%
+  gather(key="phenotypes", value="value", c("umax", "lag", "Yx", "Yp", "CDW"))
+
+#plotting phenotypes mean (color based on normalized values and text corresponding to measured values)
+library(RColorBrewer)
+ggplot() +
+  geom_tile(data = phenotype_mean_long, aes(x = strain, y = phenotypes, fill = value)) + 
+  scale_fill_distiller(palette = "RdYlGn", trans = "reverse") + 
+  scale_x_discrete(expand = c(0, 0)) + 
+  scale_y_discrete(expand = c(0, 0)) +
+  coord_fixed(ratio = 1)+# Layer 1: Colors
+  geom_text(data = phenotype_long, aes(x = strain, y = phenotypes, label=round(value, 2)),size=3) + # Labels
+theme(text = element_text(size = 10), axis.text=element_text(size=10),
+        axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+#ggsave("P_heatmap_norm.svg", width = 500, height = 300, unit = "mm", dpi = 300, path="~/plots")
+#ggsave("P_heatmap_norm_lag.svg", width = 500, height = 300, unit = "mm", dpi = 300, path="~/plots")
+
+#plotting robusntess mean
+#plotting robustness mean (color based on normalized values and text corresponding to measured values)
+ggplot() +
+  geom_tile(data = robustness_mean_long, aes(x = strain, y = phenotypes, fill = value)) + 
+  scale_fill_distiller(palette = "RdYlGn", trans="reverse") + 
+  scale_x_discrete(expand = c(0, 0)) + 
+  scale_y_discrete(expand = c(0, 0)) +
+  coord_fixed(ratio = 1)+# Layer 1: Colors
+  geom_text(data = rob_long, aes(x = strain, y = phenotypes, label=round(value, 2)),size=3) + # Labels
+theme(text = element_text(size = 10), axis.text=element_text(size=10),
+        axis.title=element_text(size=10,face="bold"),
+        axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+#ggsave("R_heatmap_norm.svg", width = 500, height = 300, unit = "mm", dpi = 300, path="~/plots")
+
+```
+
+# Perturbations influence on Robustness
+
+Calculating the robustness without one group to see the importance of that group in the robustness assessment
+```{r}
+#filtering out one group of conditions per dataset
+df_hexose <- df_strain[!(df_strain$group=="hexose"),]
+df_pentose <- df_strain[!(df_strain$group=="pentose"),]
+df_alcohol <- df_strain[!(df_strain$group=="alcohol"),]
+df_salt <- df_strain[!(df_strain$group=="salt"),]
+df_acid <- df_strain[!(df_strain$group=="acid"),]
+df_aldehyde <- df_strain[!(df_strain$group=="aldehyde"),]
+
+#calculating robustness without one group of the growth conditions
+R_hexoses <- df_hexose %>%
+  gather(key="phenotypes", value="value", c("umax", "lag", "Yx", "Yp", "CDW")) %>%
+  group_by(strain, phenotypes, replicate ) %>%
+  mutate(mean=mean(value,  na.rm=TRUE)) %>%
+  mutate(stdev=sd(value,  na.rm=TRUE)) %>%
+  filter(condition == "Xyl_16" ) %>%
+  select(-c(condition, group, value))
+
+R_Fano_hexoses  <- R_hexoses  %>%
+  group_by(phenotypes)%>%
+  mutate(mean_v=mean(mean, na.rm=TRUE)) %>%
+  mutate(robustness=-stdev^2/mean, na.rm=TRUE)%>%
+  mutate(robustness_n=robustness/mean_v, na.rm=TRUE) %>%
+  ungroup()%>%
+  group_by(strain, phenotypes) %>%
+  mutate(mean_R=mean(robustness_n, na.rm=TRUE)) %>%
+  mutate(sem_R=sd(robustness_n)/sqrt(3),na.rm=TRUE) %>%
+  filter(replicate==1)
+
+R_mean_hexoses <- R_Fano_hexoses[c("strain","strain_type","phenotypes", "mean_R")] %>%
+  pivot_wider(names_from =phenotypes, values_from=mean_R)
+head(R_mean_hexoses)
+#save each dataset in a separate xlsx file
+#Data from the calculation without the groups were saved and externally elaborated in a separate file. 
+```
+# Correlations between performance and robustness
+
+```{r}
+#merging the phenotype and robustness tables to compute correlations
+robustness_mean <- robustness_mean %>%
+  rename(R_CDW=CDW)%>%
+  rename(R_Yx=Yx)%>%
+  rename(R_Yp=Yp)%>%
+  rename(R_lag=lag)%>%
+  rename(R_umax=umax)
+
+P_R <- merge(phenotype_mean,robustness_mean,by=c("strain_type","strain"))
+#check all the combinations and the relative corerlation coefficients with plots
+ggpairs(P_R, columns = 3:14, upper = list(continuous = wrap("cor", method = "spearman", size=2)))
+#check only the correlation coefficient
+ggcorr(P_R[,c(3:14)], method = c("complete.obs", "spearman"), nbreaks = 10, palette = "RdYlBu", label=TRUE,digits=2,label_size = 5,  legend.size = 5) 
+#ggsave("correlation_matrix_R_P.svg", width = 500, height = 300, unit = "mm", dpi = 300, path="~/plots")
+
+#ggscatter by group
+p <- ggscatter(P_R, x = "R_lag", y = "lag",
+          add = "reg.line", conf.int = TRUE,
+          cor.coef = TRUE, cor.method = "spearman", color = "#C9C9C9", size = 5)
+# xlim=c(0-2,0)
+p +
+  font("xlab", size = 30)+
+  font("ylab", size = 30)+
+  font("xy.text", size = 30)
+
+#ggsave("correlation_P_R_lag.svg", width = 500, height = 300, unit = "mm", dpi = 300, path="~/plots")
+
+#check standard error of the Spearman correlations 
+library(vcmeta)
+se.spear(0.47,24)
+se.spear(-0.77,24)
+se.spear(-0.82,24)
+se.spear(0.31,24)
+se.spear(-0.63,24)
+```
+
