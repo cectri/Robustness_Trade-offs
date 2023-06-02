@@ -1,0 +1,332 @@
+---
+title: "Exploratory analysis of strain data"
+author: "Ceclia Trivellin"
+date: "`r Sys.Date()`"
+output: 
+  html_document:
+    df_print: kable
+    toc: true
+    toc_float: true
+---
+The following script is used to analyse the dataset containing phenotypic data (max.specific growth rate, lag phase, biomass and ethanol yield and cell dry weight) of 24 Saccharomyces cerevisiae strains cultivated in 29 conditions (triplicates). 
+
+Load libraries
+```{r, warning=F, message=FALSE}
+library(tidyverse)
+library(ggplot2)
+library(ggpubr)
+library(ggsci)
+library(RColorBrewer)
+library(ggridges)
+library(stats)
+library(gghighlight)
+library(ggbeeswarm)
+library(uwot)
+library(ggpubr)
+library(GGally)
+```
+
+Load data
+```{r}
+df_strain_long <- readRDS("~/data/dataset.rds")
+```
+
+# Plotting strain phenotypes
+
+Visualize data for each strain and phenotype
+```{r}
+ggplot(df_strain_long, aes(x=strain, y=value, order=strain_type)) +
+  geom_violin(alpha=0.5, color="gray")+
+  geom_point(aes(colour = factor(group), alpha=0.9))+
+  # geom_boxplot()+
+  facet_wrap(~phenotypes,  ncol=1, strip.position = "left", scales ="free_y")+
+  scale_color_manual(values = c("acid" = "#00AFBB", "alcohol" = "#3581d8", "hexose" = "#fba465", "pentose" = "#FC4E07", "salt" = "grey", "aldehyde" = "#f2c85b"))+
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+
+```
+
+Visualize only the means for each group of conditions and for each strain 
+```{r}
+df_strain <-  df_strain_long %>% pivot_wider(names_from = phenotypes,values_from = value)
+
+#calculating different means 
+#datasets for plotting
+ggdot_mean <- df_strain %>%
+  gather(key="phenotypes", value="value", c("umax", "lag", "Yx", "Yp", "CDW")) %>%
+  group_by(strain, phenotypes, group ) %>%
+  mutate(mean=mean(value,  na.rm=TRUE)) 
+head(ggdot_mean)
+ggdot_mean2 <- ggdot_mean %>%
+  group_by(strain, phenotypes ) %>%
+  mutate(mean=mean(value,  na.rm=TRUE)) %>%
+  filter(condition=="Glu_30", replicate==1)
+head(ggdot_mean2)
+#calculating means to compare strains, groups and conditions
+mean_phenotype_group <- df_strain %>%
+  gather(key="phenotypes", value="value", c("umax", "lag", "Yx", "Yp", "CDW")) %>%
+  group_by(phenotypes, group ) %>%
+ dplyr::summarise(mean_value = mean(value, na.rm=TRUE))
+head(mean_phenotype_group)
+phenotype_mean <- ggdot_mean %>%
+  group_by(phenotypes ) %>%
+  mutate(mean=mean(value,  na.rm=TRUE)) %>%
+  filter(strain=="CENPK7D",condition=="Glu_30", replicate==1)
+head(phenotype_mean)
+condition_mean <- ggdot_mean %>%
+  group_by(phenotypes, condition) %>%
+  mutate(mean=mean(value,  na.rm=TRUE))%>%
+  filter(replicate==1,  strain=="CENPK7D")
+head(condition_mean)
+
+p <- ggdotchart(ggdot_mean, x = "strain", y = "mean",
+           group = "strain_type",
+           color = "group",                                # Color by groups
+           palette = c("#00AFBB","#3581d8","#f2c85b", "#fba465", "#FC4E07", "grey"), # Custom color palette                           # Add segments from y = 0 to dots
+           add.params = list(color = "lightgray", size = 2), # Change segment color and size
+           dot.size = 2,                                 # Large dot size
+           ggtheme = theme_light()                        # ggplot2 theme
+)+
+  geom_hline(yintercept = 0, linetype = 2, color = "lightgray") +
+  facet_grid(vars(phenotypes), scales = "free_y")+
+  theme(
+    text = element_text(size = 20),
+    axis.text = element_text(size = 20),
+    axis.title = element_text(size = 20, face = "bold"),
+    strip.background = element_rect(fill = "grey"),
+    strip.text.x = element_text(size = 20, color = "black", face = "bold"),
+    strip.text.y = element_text(size = 20, color = "black", face = "bold")
+  )
+
+p2 <- p +
+  geom_point(data = ggdot_mean2,aes(x=strain, y=mean), shape=95, size= 7)+
+  facet_grid(vars(phenotypes), scales = "free_y")
+p2
+
+#ggsave("phenotype_mean.svg", width = 500, height = 300, unit = "mm", dpi = 300, path="~/plots")
+
+```
+Create metadata
+```{r}
+df_meta <- 
+  df_strain_long %>% 
+  select(Sample,strain,strain_type,condition,replicate,group) %>% 
+  distinct()
+```
+
+# PCA
+## Pre-processing
+
+Let's begin by log-normalizing the data
+```{r}
+df_strain_long %>% 
+  mutate(value_log = log10(value+1e-4)) %>% View()
+
+pca_data <- 
+  df_strain_long %>% 
+  mutate(value_log = log10(value+1e-4)) %>% 
+  select(-value) %>% 
+  pivot_wider(names_from = phenotypes,values_from = value_log)
+
+head(pca_data)
+```
+
+Make data suitable for prcomp function
+```{r}
+df_pca <- 
+  pca_data %>% 
+  select(Sample,CDW,Yx,Yp,umax,lag) %>% 
+  as.data.frame()
+
+rownames(df_pca) <- df_pca$Sample
+
+df_pca <- 
+  df_pca %>% 
+  select(-Sample)
+```
+
+Run PCA
+```{r}
+pca1 <- prcomp(na.omit(df_pca),center = T,scale. = F)
+
+pca1$x %>% head()
+```
+
+Store PCA results and merge with metadata
+```{r}
+df_pcares <- 
+  pca1$x %>% 
+  as_tibble(rownames = "Sample") %>% 
+  select(Sample,PC1,PC2)
+head(df_pcares)
+
+df_pca_res <- 
+  df_pcares %>% 
+  full_join(df_meta,by = "Sample")
+
+df_pca_res %>% 
+  ggplot(aes(x=PC1,y=PC2,color=group)) +
+  geom_point() +
+  stat_ellipse() +
+  theme_bw() +
+  theme(aspect.ratio = 1)
+
+df_pca_res %>% 
+  ggplot(aes(x=PC1,y=PC2,color=strain_type)) +
+  geom_point() +
+  stat_ellipse() +
+  theme_bw() +
+  theme(aspect.ratio = 1)
+```
+Check outliers
+```{r}
+outlier_samples <- 
+  df_pca_res %>% 
+  filter(PC1>5 & PC2<0) %>% 
+  pull(Sample)
+
+df_strain_long %>% 
+  filter(Sample %in% outlier_samples) %>% 
+  pivot_wider(names_from = phenotypes,values_from = value) %>% head()
+```
+
+# UMAP
+Run UMAP on log-normalized data and store output
+```{r}
+set.seed(1980)
+umap1 <- umap(na.omit(df_pca),n_components = 3)
+
+df_umap_res <-
+  umap1 %>%
+  as_tibble(rownames = "Sample") %>%
+  rename("UMAP1" = "V1") %>%
+  rename("UMAP2" = "V2") %>%
+  rename("UMAP3" = "V3") %>%
+  full_join(df_meta, by = "Sample")
+```
+
+Plot UMAP
+```{r}
+df_umap_res %>% 
+  ggplot(aes(x=UMAP1,y=UMAP2,color=group)) +
+  geom_point() +
+  stat_ellipse() +
+  theme_bw() +
+  theme(aspect.ratio = 1)
+
+plotly::plot_ly(df_umap_res, x = ~UMAP1, y = ~UMAP2, z = ~UMAP3, color = df_umap_res$group, colors = c("#00AFBB","#3581d8","#f2c85b", "#fba465", "#FC4E07", "grey")) 
+
+df_umap_res %>% 
+  ggplot(aes(x=UMAP1,y=UMAP2,color=strain_type)) +
+  geom_point() +
+  stat_ellipse() +
+  theme_void() +
+  theme(aspect.ratio = 1) +
+  ggtitle("UMAP")
+```
+
+# Violin plots
+
+By group
+```{r}
+df_strain_long %>% 
+  mutate(sugar = group) %>% 
+  select(-group) %>% 
+  ggplot(aes(x=sugar,y=value, fill = sugar)) +
+  geom_jitter()
+
+df_strain_long %>% 
+  ggplot(aes(x=group,y=value, fill = group)) +
+  geom_violin(draw_quantiles = 0.5) +
+    scale_fill_manual(values=c("#00AFBB","#3581d8","#f2c85b", "#fba465", "#FC4E07", "grey"))+
+ facet_grid(vars(phenotypes), scales = "free_y")+
+  theme_light()+
+  theme(
+    text = element_text(size = 20),
+    axis.text = element_text(size = 20),
+    axis.title = element_text(size = 20, face = "bold"),
+    strip.background = element_rect(fill = "grey"),
+    strip.text.x = element_text(size = 20, color = "black", face = "bold"),
+    strip.text.y = element_text(size = 20, color = "black", face = "bold")
+  )
+#ggsave("groups_phenotype_distribution.svg", width = 500, height = 300, unit = "mm", dpi = 300, path="~/plots")
+
+#Evaluate if the groups are statistically different
+cm <- compare_means(value ~ group,  data = df_strain_long, ref.group = "hexose",
+              method = "wilcox.test", group.by = "phenotypes")
+head(cm)
+
+```
+
+By condition
+```{r,fig.width=30}
+df_strain_long %>% 
+  mutate(condition = factor(condition,levels = c("Glu_20",
+                                                 "Glu_30",
+                                                 "Glu_65",
+                                                 "Xyl_16",
+                                                 "Xyl_36",
+                                                 "Gal_2",
+                                                 "Gal_4.5",
+                                                 "Ara_2",
+                                                 "Ara_4",
+                                                 "Man_10",
+                                                 "Man_16",
+                                                 "EtOH_45",
+                                                 "EtOH_90",
+                                                 "NaCl_25",
+                                                 "NaCl_80",
+                                                 "FrAcid_1",
+                                                 "FrAcid_3.5",
+                                                 "AcAcid_4.5",
+                                                 "AcAcid_6",
+                                                 "LacAcid_2",
+                                                 "LacAcid_7",
+                                                 "LevAcid_2.5",
+                                                 "LevAcid_5",
+                                                 "HMF_0.5",
+                                                 "HMF_6",
+                                                 "Furf_1",
+                                                 "Furf_3",
+                                                 "Van_0.5",
+                                                 "Van_2"),ordered = T)) %>% 
+  ggplot(aes(x=condition,y=value, fill = condition)) +
+  geom_violin() +
+  facet_wrap(vars(phenotypes),ncol = 1,scales = "free_y") +
+  theme_bw() +
+  theme(aspect.ratio = 0.2,
+        axis.text.x = element_text(angle = 45,hjust = 1)) +
+  ggtitle("All phenotypes",subtitle = "Grouped by strain")+
+  stat_compare_means(ref.group = "Glu_20",label = "p.signif",hide.ns = T)
+
+```
+
+# Performance correlations  
+```{r}
+#run correlations for all the combinations of phenotypes
+ggpairs(df_strain, columns = c(7:11),ggplot2::aes(colour=group), palette())
+
+#visualize specific correlations with only two phenotypes per time
+#ggscatter by phenotype
+ggscatter(df_strain, x = 'umax', y = 'CDW', color = 'group', add = "reg.line", conf.int = FALSE, cor.method = "spearman", size=0.5,  palette = c("#00AFBB","#3581d8","#f2c85b", "#fba465", "#FC4E07", "grey"))+
+  stat_cor(aes(color = group)) +
+  yscale("log10", .format = TRUE)+
+  # xscale("log10", .format = TRUE)+
+  stat_cor(method = "spearman")+
+  theme_light()+
+  theme(
+    text = element_text(size = 7),
+    axis.text.x = element_text(size = 7, angle=90, vjust = 0.5,hjust = 1),
+    axis.text.y = element_text(size = 7),
+    axis.title = element_text(size = 7, face = "bold"),
+    strip.background = element_rect(fill = "grey"),
+    strip.text.x = element_text(size = 7, color = "black", face = "bold"),
+    strip.text.y = element_text(size = 7, color = "black", face = "bold"))
+
+#ggsave("umax_CDW_corr.svg", width = 150, height = 110, unit = "mm", dpi = 300, path="~/plots")
+
+```
+
+
+
+
+
