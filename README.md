@@ -15,10 +15,11 @@ This GitHub page includes:
  1. First cultivation growth data for each strain (growth_data_1 folder). Each .xlsx file is formatted with the first column corresponding to the time in minutes and each column to a well in the 96-well plate. The layout of the plate is in the plate_layout folder. 
  2. Second cultivation growth data for each strain (growth_data_2 folder). .xlsx files are formatted as above and the plate layout is the same as the first cultivation. 
  3. Final sugars and ethanol concentrations measured with enzymatic assays as well as final OD_600 and slope to convert OD in cell dry weight are summarised in the phenotype_raw_data folder, grouped for each strain. 
- 4. Raw data were processed using "strain_phenotype_calc.Rmd" in the scripts folder. The processed data were saved in the processed_data folder. 
- 5. Performance analysis was performed on all the strains using "preprocessing.Rmd" and "ExploratoryAnalysis.Rmd". 
- 6. Robusntess and correlations between robustness adn performance were analysed using "robusntess.Rmd". 
- 7. Improvement of the umax and relative correlations with robustness and performance were analysed using "adaptation.Rmd". 
+ 4. Initial sugar concentrations and enzymatic assays dilutions can be found in the "plate_layout" folder. 
+ 5. Raw data were processed using "strain_phenotype_calc.Rmd" in the scripts folder. The processed data were saved in the processed_data folder. 
+ 6. Performance analysis was performed on all the strains using "preprocessing.Rmd" and "ExploratoryAnalysis.Rmd". 
+ 7. Robusntess and correlations between robustness adn performance were analysed using "robusntess.Rmd". 
+ 8. Improvement of the umax and relative correlations with robustness and performance were analysed using "adaptation.Rmd". 
 
 **NOTE** for each of the scripts mentioned above there is a corresponding knitted .html page run on the available data. This is to facilitate the output and results visualization of the data of our study. The scripts above can be adapted to any high-throughput setup and can be used to calculate phenotypic variables as well as checking correlations between performance and robusntess. 
 
