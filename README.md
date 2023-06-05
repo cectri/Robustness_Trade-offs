@@ -30,8 +30,11 @@ Cecilia Trivellin, *cectri@chalmers.se*, Industrial Biotechnology Division, Chal
 Created: 23-06-05
 
 The scripts were tested with R Version: Version 2023.03.1+446 (2023.03.1+446) RStudio
+&nbsp;  
 Mac OS Ventura 13.4
+&nbsp;  
 The following R libraries were used in the scripts and referenced in the manuscript: 
+&nbsp;  
 deSolve, growthrates, ggplot2, ggExtra, naniar, ggpubr, statmod, readr, rstatix, ggridges, ggsci, RColorBrewer, stats, gghighlight, ggbeeswarm, uwot, GGally
 
 &nbsp;  
