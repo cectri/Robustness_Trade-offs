@@ -1,0 +1,277 @@
+---
+title: "short-term adaptation and robustness"
+author: "Cecilia Trivellin"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+The following script was used to calculate the percentage of improvement of the maximum specific growth rate after re-inoculation of yeast cell cultures from a 96- well plate with different conditions in exactly the same setup (after 48h). Correlations between different phenotypes and their robustness and percentage of improvement of µmax were also analysed. 
+
+Load libraries
+```{r}
+library(uwot)
+library(tidyverse)
+library(ggpubr)
+library(GGally)
+```
+
+Load data
+```{r, warnings=F}
+list_csv_files <- list.files(path = "~/processed_data")
+df <- readr::read_csv(list_csv_files) %>%
+  filter(Yx <= 0.61) %>% #theoretical maximum is 0.51 on glucose aerobic +- 0.1
+  filter(Yp <= 0.61) %>% #theoretical maximum is 0.51 on glucose aerobic +- 0.1
+  filter(CDW <= 39.65) %>% #assuming maximum Yx/s of 0.61 max biomass from 65 g/L glucose media is x = Yx/s(Si-S)=39.65 g/L 
+  select(`condition`, `replicate`, `group`, `µmax2`, `µmax`,`strain`) %>%
+  dplyr::rename("umax"="µmax")%>%
+  dplyr::rename("umax2"="µmax2")%>%
+  mutate(Pi=(umax2-umax)/umax*100)
+
+#setting Inf values to max increment 
+max <- max(df$Pi[is.finite(df$Pi)]) #==1321.83
+df[c('Pi')][sapply(df[c('Pi')], is.infinite)] <- max 
+
+```
+# plot 
+
+Visualizing percentage of improvement (all datapoints)
+
+```{r}
+ggplot(df, aes(x=strain, y=Pi)) +
+  geom_violin(alpha=0.5, color="gray")+
+  geom_point(aes(colour = factor(group), alpha=0.9))+
+  # geom_boxplot()+
+  # facet_wrap(~strain,  ncol=1, strip.position = "left", scales ="free_y")+
+  scale_color_manual(values = c("acid" = "#00AFBB", "alcohol" = "#3581d8", "hexose" = "#fba465", "pentose" = "#FC4E07", "salt" = "grey", "aldehyde" = "#f2c85b"))+
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+```
+Creating a dataset with mean across perturbations of the %P increase 
+```{r}
+df_Ps <- df %>%
+  group_by(strain, replicate) %>%
+ dplyr::summarise(meanP = mean(Pi, na.rm=TRUE))
+df_Ps <- df_Ps %>%
+  group_by(strain)%>%
+  mutate(mean=mean(meanP))%>%
+  mutate(sdP=sd(meanP)) %>%
+  filter(replicate==1) %>%
+  select(-`replicate`)
+head(df_Ps)
+```
+Creating a dataset with mean across strains of the %P increase
+```{r}
+df_Pp <- df %>%
+  group_by(condition, replicate) %>%
+  dplyr::summarise(meanP = mean(Pi, na.rm=TRUE))
+df_Pp <- df_Pp %>%
+  group_by(condition)%>%
+  mutate(mean=mean(meanP))%>%
+  mutate(sdP=sd(meanP)) %>%
+  filter(replicate==1) %>%
+  select(-`replicate`)
+head(df_Pp)
+```
+Creating a dataset with mean across strains an conditions of the %P increase and plotting to visualize differences 
+
+```{r}
+df_Pcs <- df %>%
+    group_by(group, strain)%>%
+    dplyr::summarise(mean_Pi = mean(Pi, na.rm=TRUE)) 
+head(df_Pcs)
+
+ggplot(df_Pcs, aes(y = mean_Pi, x = strain, fill=group)) + 
+  geom_bar(position="dodge",stat="identity") +
+  theme_light()+
+  scale_fill_manual(values = c("acid" = "#00AFBB", "alcohol" = "#3581d8", "hexose" = "#fba465", "pentose" = "#FC4E07", "salt" = "grey", "aldehyde" = "#f2c85b"))+
+  # facet_grid(rows = "group", scales="free")+
+  theme(
+    text = element_text(size = 20),
+    axis.text.x = element_text(size = 20, angle=90, vjust = 0.5,hjust = 1),
+    axis.title = element_text(size = 20, face = "bold"),
+    strip.background = element_rect(fill = "grey"),
+    strip.text.x = element_text(size = 20, color = "black", face = "bold"),
+    strip.text.y = element_text(size = 20, color = "black", face = "bold"))
+
+#ggsave("Pimprov_strains_groups_facet.svg", width = 500, height = 300, unit = "mm", dpi = 300, path="~/plots")
+
+```
+Plot data on perturbations and strains
+```{r}
+df_Ps <- df_Ps %>%
+  mutate(strain = factor(
+    strain,
+    levels = c(
+      "ETRED",
+      "PE2",
+      "Redstar",
+      "Thermosacc",
+      "CENPK7D",
+      "S288C",
+      "LBCM1001",
+      "LBCM1003",
+      "LBCM1008",
+      "LBCM1013",
+      "LBCM1014",
+      "LBCM1017",
+      "LBCM103",
+      "LBCM1030",
+      "LBCM1046",
+      "LBCM1079",
+      " LBCM109",
+      "LBCM1095",
+      "LBCM1099",
+      "LBCM110",
+      "LBCM1106",
+      "LBCM37",
+      "LBCM67",
+      "LBCM97",
+      ordered = T
+    )
+  )) 
+df_Pcs <- df_Pcs %>%
+  mutate(strain = factor(
+    strain,
+    levels = c(
+      "ETRED",
+      "PE2",
+      "Redstar",
+      "Thermosacc",
+      "CENPK7D",
+      "S288C",
+      "LBCM1001",
+      "LBCM1003",
+      "LBCM1008",
+      "LBCM1013",
+      "LBCM1014",
+      "LBCM1017",
+      "LBCM103",
+      "LBCM1030",
+      "LBCM1046",
+      "LBCM1079",
+      " LBCM109",
+      "LBCM1095",
+      "LBCM1099",
+      "LBCM110",
+      "LBCM1106",
+      "LBCM37",
+      "LBCM67",
+      "LBCM97",
+      ordered = T
+    )
+  )) 
+
+ggplot() +
+  geom_bar(data=df_Ps, aes(x=strain, y=meanP,), stat="identity")+
+  geom_errorbar(data=df_Ps, aes(x=strain, ymin=meanP-sdP, ymax=meanP+sdP), width=0.05, colour="black", alpha=0.9, size=0.5)+ 
+  geom_point(data= df_Pcs, aes(x=strain, y=mean_Pi, colour = group, alpha=5), shape=20, size= 7)+
+  scale_color_manual(values = c("acid" = "#00AFBB", "alcohol" = "#3581d8", "hexose" = "#fba465", "pentose" = "#FC4E07", "salt" = "grey", "aldehyde" = "#f2c85b"))+ 
+  theme_light()+
+  theme(
+    text = element_text(size = 20),
+    axis.text = element_text(size = 20, angle=90, vjust = 0.5,hjust = 1),
+    axis.title = element_text(size = 20, face = "bold"),
+    strip.background = element_rect(fill = "grey"),
+    strip.text.x = element_text(size = 20, color = "black", face = "bold"),
+    strip.text.y = element_text(size = 20, color = "black", face = "bold"))
+
+#ggsave("Pimprov_strains_condition.svg", width = 500, height = 300, unit = "mm", dpi = 300, path="~/plots")
+  
+ggplot(df_Pp, aes(x = condition, y = meanP)) + 
+  geom_bar(stat = "identity", position = "dodge") +
+  geom_errorbar(aes(x=condition, ymin=meanP-sdP, ymax=meanP+sdP), width=0.05, colour="black", alpha=0.9, size=0.5)+ #error among triplicates
+  theme_light()+
+  theme(
+    text = element_text(size = 20),
+    axis.text = element_text(size = 20, angle=90, vjust = 0.5,hjust = 1),
+    axis.title = element_text(size = 20, face = "bold"),
+    strip.background = element_rect(fill = "grey"),
+    strip.text.x = element_text(size = 20, color = "black", face = "bold"),
+    strip.text.y = element_text(size = 20, color = "black", face = "bold")) 
+
+#ggsave("Pimprov_conditions.svg", width = 500, height = 300, unit = "mm", dpi = 300, path="~/plots")
+
+```
+# µmax correlations 
+Check correlations between the maximum specific growth rate in the first and second cultivation
+
+```{r}
+#check correlation with spearman method
+p <- ggscatter(df, x = 'umax', y = 'umax2', color = 'group', add = "reg.line", conf.int = FALSE, size = 5, palette=c("#00AFBB","#3581d8","#f2c85b", "#fba465", "#FC4E07", "grey"))+
+  stat_cor(aes(color = group), method = "spearman") 
+p +
+  font("xlab", size = 30)+
+  font("ylab", size = 30)+
+  font("xy.text", size = 30)
+
+#ggsave("correlation_µmax_µmax2.svg", width = 500, height = 300, unit = "mm", dpi = 300, path="~/plots")
+```
+
+# correlations between robustness and adaptation 
+```{r}
+#uploading data with all phenotypic variables
+df_a <- readr::read_csv(list_csv_files) %>%
+  filter(Yx <= 0.61) %>% #theoretical maximum is 0.51 on glucose aerobic +- 0.1
+  filter(Yp <= 0.61) %>% #theoretical maximum is 0.51 on glucose aerobic +- 0.1
+  filter(CDW <= 39.65) %>% #assuming maximum Yx/s of 0.61 max biomass from 65 g/L glucose media is x = Yx/s(Si-S)=39.65 g/L 
+  dplyr::rename("umax"="µmax")%>%
+  dplyr::rename("umax2"="µmax2")%>%
+  mutate(Pi=(umax2-umax)/umax*100)
+#setting Inf values to max increment 
+max(df_a$Pi[is.finite(df_a$Pi)]) #==1321.83
+df_a[c('Pi')][sapply(df_a[c('Pi')], is.infinite)] <- 1321.83
+
+
+#Calculating the mean and the standard deviation for each variable, strain and replicate and condition
+df_P <- df_a %>%
+  gather(key="phenotypes", value="value", c("umax", "lag", "Yx", "Yp", "CDW","Pi", "umax2")) %>%
+  group_by(strain, phenotypes, condition) %>%
+  mutate(mean=mean(value,  na.rm=TRUE)) %>%
+  mutate(stdev=sd(value,  na.rm=TRUE)) %>%
+  filter(replicate == "1" ) %>%
+  select(-c(group, value, r.c_µmax))
+
+#calculating robustness 
+df_mean <- df_a %>%
+  gather(key="phenotypes", value="value", c("umax", "lag", "Yx", "Yp", "CDW")) %>%
+  group_by(strain, phenotypes, replicate) %>%
+  mutate(mean=mean(value,  na.rm=TRUE)) %>%
+  mutate(stdev=sd(value,  na.rm=TRUE)) %>%
+  filter(condition == "Glu_20" ) %>%
+  select(-c(condition, group, value))
+
+df_R <- df_mean %>%
+  group_by(phenotypes)%>%
+  mutate(mean_v=mean(mean, na.rm=TRUE)) %>%
+  mutate(robustness=-stdev^2/mean, na.rm=TRUE)%>%
+  mutate(robustness_n=robustness/mean_v, na.rm=TRUE) %>%
+  ungroup()%>%
+  group_by(strain, phenotypes) %>%
+  mutate(mean_R=mean(robustness_n, na.rm=TRUE)) %>%
+  mutate(sem_R=sd(robustness_n)/sqrt(3),na.rm=TRUE) 
+```
+
+# more general correlations 
+```{r}
+#general correlation between adaptation and robusntess 
+P_mean <- df_mean %>%
+    dplyr::summarise(mean_Pi = mean(Pi, na.rm=TRUE))
+P_mean <- P_mean %>%
+  group_by(phenotypes, strain) %>%
+  summarise_at(vars(mean_Pi), list(mean_Pi=mean)) 
+R_mean <- df_R %>%
+  dplyr::summarise(mean_R = mean(mean_R, na.rm=TRUE))
+
+adp_R <- P_mean %>%
+  merge.data.frame(R_mean, by=c("strain", "phenotypes")) %>%
+  pivot_wider(names_from = phenotypes, values_from = mean_R) 
+
+ggpairs(adp_R, columns = c(2:7),upper = list(continuous = wrap("cor", method = "spearman"))) 
+# #ggsave("correlation_Pi_R.svg", width = 500, height = 300, unit = "mm", dpi = 300, path="~/plots")
+
+#check percentage of improvement and robustness of specific phenotypes (change umax with the phenotype of interest)
+ggscatter(adp_R, x = 'mean_Pi', y = 'umax',  add = "reg.line", conf.int = FALSE, size = 5)+
+  stat_cor( method = "spearman") 
+#ggsave("correlation_adap_Rumax.svg", width = 500, height = 300, unit = "mm", dpi = 300, path="~/plots")
+```
+
+
