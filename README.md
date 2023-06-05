@@ -18,10 +18,10 @@ This GitHub page includes:
  4. Initial sugar concentrations and enzymatic assays dilutions can be found in the "plate_layout" folder. 
  5. Raw data were processed using "strain_phenotype_calc.Rmd" in the scripts folder. The processed data were saved in the processed_data folder. 
  6. Performance analysis was performed on all the strains using "preprocessing.Rmd" and "ExploratoryAnalysis.Rmd". 
- 7. Robusntess and correlations between robustness adn performance were analysed using "robusntess.Rmd". 
+ 7. Robusntess and correlations between robustness and performance were analysed using "robusntess.Rmd". 
  8. Improvement of the umax and relative correlations with robustness and performance were analysed using "adaptation.Rmd". 
 
-**NOTE** for each of the scripts mentioned above there is a corresponding knitted .html page run on the available data. This is to facilitate the output and results visualization of the data of our study. The scripts above can be adapted to any high-throughput setup and can be used to calculate phenotypic variables as well as checking correlations between performance and robusntess. 
+**NOTE** for each of the scripts mentioned above there is a corresponding .html page run on the available data. This is to facilitate the output and results visualization of the data of our study. The scripts above can be adapted to any high-throughput setup and can be used to calculate phenotypic variables as well as checking correlations between performance and robusntess. 
 
 &nbsp;  
 
