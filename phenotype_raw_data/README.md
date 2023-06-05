@@ -1,2 +1,2 @@
 Each of the strain-summary excel file contains information on the absorbance readings from the enzymatic assays (sugars and ethanol concentrations) and the final OD600 read after 48h from each 96-well plate. The last column is the slope value used to convert OD600 values to cell dry weight. The strain-summary raw data were processed and converted in yields using the "strain_phenotypic_calc.Rmd" script. For more info on how data were collected and used check the Material and Methods of the following paper: [Quantification of microbial robustness in yeast](https://pubs.acs.org/doi/10.1021/acssynbio.1c00615).
-
+> EV2_data contains robusntess data analysed without groups of conditions used to generate Figure EV2 in the manuscript. 
