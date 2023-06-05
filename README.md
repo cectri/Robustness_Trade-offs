@@ -1,4 +1,4 @@
-# Performance and robustness analysis reveals phenotypic trade-offs in yeast!
+# Performance and robustness analysis reveals phenotypic trade-offs in yeast
 ##### R Toolbox for the quantification of the robusntess of cellular functions starting from a high-throughput setup and multivariate analysis of phenomics dataset
 
 **NOTE**: The main findings of the study are summarized below and in a study which is currently submitted for peer-review. 
