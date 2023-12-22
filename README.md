@@ -1,7 +1,7 @@
 # Performance and robustness analysis reveals phenotypic trade-offs in yeast
 ##### R Toolbox for the quantification of the robusntess of cellular functions starting from a high-throughput setup and multivariate analysis of phenomics dataset
 
-**NOTE**: The main findings of the study are summarized below and in a study which is currently submitted for peer-review. 
+**NOTE**: The main findings of the study are summarized below and in a study which is now published --> https://www.life-science-alliance.org/content/7/1/e202302215 . 
 We analysed more than 10000 phenotypic data from 24 **Saccharomyces cerevisiae** strains cultivated in 29 growth conditions. The phenotypes analysed were: maximum specific growth rate (1/h), lag phase(h), ethanol and biomass yields (g/g) and cell dry weight (g/L). In addition to the performance we also calculated the robustness of the phenotyes (listead above) with a previous published methodology [Quantification of microbial robustness in yeast](https://pubs.acs.org/doi/10.1021/acssynbio.1c00615) and with the R tools already availble on GitHub [Quantification of Microbial Robusntess](https://github.com/cectri/Quantification-of-microbial-robustness#quantification-of-microbial-robusntess). To expand the perturbation space we included as a perturbation a cell transfer step. The cultures were reinoculated after 48h in the same cultivation setup and the maximum specific growth rate of the second cultivation was assessed. Correlations among performance, robustness and the short-term adaptation (percentage of improvement of the umax in the second cultivation) were analysed.
 
 Main findings of the study: 
